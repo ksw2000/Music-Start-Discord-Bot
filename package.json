@@ -1,0 +1,16 @@
+{
+  "name": "music-start-discord-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "discord.js",
+  "dependencies": {
+    "@discordjs/opus": "github:discordjs/opus",
+    "discord.js": "^12.5.3",
+    "ytdl-core": "^4.8.3"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT"
+}
