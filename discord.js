@@ -6,14 +6,10 @@ const ytdl = require('ytdl-core');
 const { token } = require('./token.json');
 const client = new Discord.Client();
 
-function sendingError(msg, error) {
-    msg.channel.send(`> 錯誤 \n > ${error}`);
-}
-
-class Bucket{
+class Bucket {
     static instant = {};
     // 利用 msg.guild.id
-    constructor(msg){
+    constructor(msg) {
         this.id = msg.guild.id;
         // https://discord.js.org/#/docs/main/stable/class/VoiceConnection
         this.connection = null;
@@ -24,17 +20,17 @@ class Bucket{
         Bucket.instant[msg.guild.id] = this;
     }
 
-    static find(msg){
-        if(typeof Bucket.instant[msg.guild.id] === 'undefined'){
+    static find(msg) {
+        if (typeof Bucket.instant[msg.guild.id] === 'undefined') {
             return new Bucket(msg);
-        }else{
+        } else {
             return Bucket.instant[msg.guild.id];
         }
     }
 }
 
 class Queue {
-    constructor(){
+    constructor() {
         this.list = [];
         this.index = 0;
     }
@@ -47,14 +43,21 @@ class Queue {
         this.list.push(url);
     }
 
-    next() {
-        if (this.isEmpty) throw ('queue is empty');
-        this.index = (this.index + 1) % this.list.length
+    next(num) {
+        if (this.isEmpty()) throw ('Queue is empty');
+        this.index = (this.index + num) % this.list.length
+        if (this.index < 0) {
+            this.index += this.list.length
+        }
         return this.list[this.index]
     }
 
-    static show(msg) {
-        if (Bucket.find(msg).queue.isEmpty()) {
+    pre(num) {
+        return this.next(num);
+    }
+
+    show(msg) {
+        if (this.isEmpty()) {
             msg.reply('無播放清單');
         } else {
             let text = '';
@@ -67,7 +70,7 @@ class Queue {
 }
 
 class Music {
-    constructor(msg){
+    constructor(msg) {
         this.msg = msg;
         this.me = Bucket.find(msg);
     }
@@ -76,7 +79,7 @@ class Music {
         // 如果使用者在語音頻道中
         if (this.msg.member.voice.channel) {
             this.me.queue.en(url);
-            if (!this.me.playing){
+            if (!this.me.playing) {
                 this.playQueue(url);
             }
         } else {
@@ -89,6 +92,11 @@ class Music {
         try {
             const res = await ytdl.getInfo(url);
             const info = res.videoDetails;
+
+            // if not joined yet
+            if (this.me.connection === null) {
+                await join(this.msg);
+            }
             this.me.dispatcher = this.me.connection.play(ytdl(url, { filter: 'audioonly' }), {
                 volume: .64,
                 bitrate: 128,
@@ -104,10 +112,10 @@ class Music {
                 this.me.playing = false;
 
                 // goto next
-                this.playQueue(this.me.queue.next());
+                this.playQueue(this.me.queue.next(1));
             });
 
-            this.me.dispatcher.on('error', () => {
+            this.me.dispatcher.on('error', (e) => {
                 sendingError(this.msg, e);
             });
         } catch (e) {
@@ -139,69 +147,87 @@ class Music {
     }
 }
 
+function sendingError(msg, error) {
+    msg.channel.send(`> 錯誤 \n > ${error}`);
+}
+
+async function join(msg) {
+    // 如果使用者正在頻道中
+    if (msg.member.voice.channel !== null) {
+        // Bot 加入語音頻道
+        await msg.member.voice.channel.join().then(conn => {
+            Bucket.find(msg).connection = conn;
+            msg.channel.send('☆歡迎使用 Music Start!☆');
+        }).catch(e => {
+            sendingError(msg, e);
+        });
+    } else {
+        msg.channel.send('請先進入語音頻道');
+    }
+}
+
 // 連上線時的事件
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 });
 
 client.on('message', async (msg) => {
-    music = new Music(msg);
 
     // 如果發送訊息的地方不是語音群（可能是私人），就 return
     if (!msg.guild) return;
 
-    //!!join
+    const mu = new Music(msg);
+    const me = Bucket.find(msg);
+
+    // .join: Join this bot to voice channel
     if (msg.content === `.join`) {
-        // 如果使用者正在頻道中
-        if (msg.member.voice.channel !== null) {
-            // Bot 加入語音頻道
-            msg.member.voice.channel.join()
-                .then(conn => {
-                    Bucket.find(msg).connection = conn;
-                    msg.channel.send('早安，您好，你這個臭雞雞');
-                })
-                .catch(e => {
-                    sendingError(msg, e);
-                });
-        } else {
-            msg.channel.send('請先進入語音頻道');
-        }
+        join(msg);
     }
 
+    // ..[url] Play music on Youtube by url
+    // ..      Pause or Resume
     if (msg.content.indexOf('..') > -1) {
         let url = msg.content.slice(2).trim();
         if (url === "") {
-            music.pauseOrResume();
+            mu.pauseOrResume();
         } else {
-            music.play(url);
+            mu.play(url);
         }
     }
 
-    if (msg.content === `.統神`) {
-        music.play('https://www.youtube.com/watch?v=072tU1tamd0');
-    }
-
+    // .bye End task
     if (msg.content === `.bye`) {
-        if (Bucket.find(msg).connection && Bucket.find(msg).connection.status === 0) {
+        if (me.connection && me.connection.status === 0) {
             msg.channel.send('ㄅㄅ');
-            Bucket.find(msg).connection.disconnect();
+            me.connection.disconnect();
         } else {
             msg.channel.send('機器人未加入任何頻道');
         }
     }
 
+    // .help prints help message
     if (msg.content === `.help`) {
         msg.channel.send('^_^ 還沒弄好');
     }
-    
-    if (msg.content === `.list`) {
-        Bucket.find(msg).queue.show(msg);
+
+    if (msg.content === `.next`) {
+        mu.playQueue(me.queue.next(1));
     }
 
+    if (msg.content === `.pre`) {
+        mu.playQueue(me.queue.pre(1));
+    }
+
+    // .list show list
+    if (msg.content === `.list`) {
+        me.queue.show(msg);
+    }
+
+    // .vol can set volume
     if (msg.content.indexOf(`.vol`) > -1) {
         let volume = msg.content.replace(`.vol`, '').trim();
 
-        if (!Bucket.find(msg).dispatcher) {
+        if (!me.dispatcher) {
             msg.reply('^_^ 沒有歌你是在設三小');
         } else if (volume) {
             volume = parseFloat(volume);
@@ -210,12 +236,16 @@ client.on('message', async (msg) => {
             } else if (volume < 0 || volume > 1) {
                 msg.reply('音量必需介於區間 [0, 1]');
             } else {
-                Bucket.find(msg).dispatcher.setVolume(volume);
+                me.dispatcher.setVolume(volume);
                 if (volume >= 0.9) {
                     msg.reply('tshàu-hī-lâng 逆？');
                 }
             }
         }
+    }
+
+    if (msg.content === `.統神`) {
+        mu.play('https://www.youtube.com/watch?v=072tU1tamd0');
     }
 });
 
