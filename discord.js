@@ -1,10 +1,58 @@
-// reference:
-// https://b-l-u-e-b-e-r-r-y.github.io/post/DiscordBot02
-
 const Discord = require('discord.js');
 const ytdl = require('ytdl-core');
 const { token } = require('./token.json');
-const client = new Discord.Client();
+
+class Util {
+    static bye(msg) {
+        if (Bucket.find(msg).connection && Bucket.find(msg).connection.status === 0) {
+            msg.channel.send('ㄅㄅ');
+            Bucket.find(msg).connection.disconnect();
+        } else {
+            msg.channel.send('機器人未加入任何頻道');
+        }
+    }
+
+    static help(msg) {
+        msg.channel.send('^_^ 還沒弄好');
+    }
+
+    // @param num: Intger
+    static humanReadNum(num) {
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    static async join(msg) {
+        // 如果使用者正在頻道中
+        if (msg.member.voice.channel !== null) {
+            // Bot 加入語音頻道
+            await msg.member.voice.channel.join().then(conn => {
+                Bucket.find(msg).connection = conn;
+                msg.channel.send(`☆歡迎使用 Music Start! ${Util.randomHappy()} ☆`);
+            }).catch(e => {
+                Util.sendErr(msg, e);
+            });
+        } else {
+            msg.channel.send('請先進入語音頻道');
+        }
+    }
+
+    static randomHappy() {
+        const emojis = ['(*´∀`)~♥', 'σ`∀´)σ', '(〃∀〃)', '(శωశ)', '(✪ω✪)', '(๑´ㅂ`๑)', '(◕ܫ◕)', '( • ̀ω•́ )'];
+        return emojis[Math.floor(Math.random() * emojis.length)];
+    }
+
+    static sendEmbed(msg, title, description) {
+        const embed = new Discord.MessageEmbed()
+            .setTitle(title)
+            .setColor(0x33DFFF)
+            .setDescription(description);
+        msg.channel.send(embed);
+    }
+
+    static sendErr(msg, error) {
+        msg.channel.send(`> 錯誤 \n > ${error}`);
+    }
+}
 
 class Bucket {
     static instant = {};
@@ -31,8 +79,13 @@ class Bucket {
 
 class Queue {
     constructor() {
+        // this.list: Array(MusicInfo)
         this.list = [];
         this.index = 0;
+    }
+
+    get len() {
+        return this.list.length;
     }
 
     isEmpty() {
@@ -44,28 +97,50 @@ class Queue {
     }
 
     next(num) {
-        if (this.isEmpty()) throw ('Queue is empty');
-        this.index = (this.index + num) % this.list.length
-        if (this.index < 0) {
-            this.index += this.list.length
-        }
-        return this.list[this.index]
+        let index = (this.index + num) % this.len
+        return (index < 0) ? this.jmp(index + this.len) : this.jmp(index);
     }
 
-    pre(num) {
-        return this.next(num);
+    jmp(index) {
+        if (this.isEmpty()) throw ('Queue is empty');
+        index = index % this.len;
+        this.index = (index < 0) ? index + this.len : index;
+        return this.list[this.index];
     }
 
     show(msg) {
         if (this.isEmpty()) {
-            msg.reply('無播放清單');
+            sendEmbed(msg, '無播放清單', '');
         } else {
             let text = '';
-            for (let i = 0; i < this.list.length; i++) {
-                text += `> ${i}. ${this.list[i]}\n`
+            for (const [index, info] of this.list.entries()) {
+                if (index == this.index && Bucket.find(msg).playing) {
+                    text += `**${index}.\t${info.title}**\n`;
+                } else {
+                    text += `${index}.\t${info.title}\n`;
+                }
             }
-            msg.reply(text);
+            Util.sendEmbed(msg, '播放清單', text);
         }
+    }
+}
+
+class MusicInfo {
+    constructor(url, title, likes, viewCount) {
+        this.url = url;
+        this.title = title;
+        this.likes = likes;
+        this.viewCount = viewCount;
+    }
+
+    static fromDetails(detail) {
+        let url = (typeof detail.videoId === 'undefined') ? null : `https://www.youtube.com/watch?v=${detail.videoId}`;
+        let title = typeof detail.title === 'undefined' ? "" : detail.title;
+        let viewCount = typeof detail.viewCount === 'undefined' ? -1 : detail.viewCount;
+        let likes = typeof detail.likes === 'undefined' ? -1 : detail.likes;
+
+        if (url === null) return null;
+        return new MusicInfo(url, title, likes, viewCount);
     }
 }
 
@@ -75,12 +150,19 @@ class Music {
         this.me = Bucket.find(msg);
     }
 
-    play(url) {
+    async play(url) {
         // 如果使用者在語音頻道中
         if (this.msg.member.voice.channel) {
-            this.me.queue.en(url);
-            if (!this.me.playing) {
-                this.playQueue(url);
+            try {
+                const res = await ytdl.getInfo(url);
+                const info = MusicInfo.fromDetails(res.videoDetails);
+                if (info === null) throw ('無法載入音樂');
+
+                this.me.queue.en(info);
+
+                if (!this.me.playing) this.playQueue(info);
+            } catch (e) {
+                Util.sendErr(this.msg, e);
             }
         } else {
             // 如果使用者不在任何一個語音頻道
@@ -88,16 +170,18 @@ class Music {
         }
     }
 
-    async playQueue(url) {
+    // @param info: MusicInfo
+    async playQueue(info) {
+        console.log(info);
         try {
-            const res = await ytdl.getInfo(url);
-            const info = res.videoDetails;
-
             // if not joined yet
             if (this.me.connection === null) {
-                await join(this.msg);
+                await Util.join(this.msg);
             }
-            this.me.dispatcher = this.me.connection.play(ytdl(url, { filter: 'audioonly' }), {
+
+            const src = ytdl(info.url, { filter: 'audioonly' });
+            console.log(src);
+            this.me.dispatcher = this.me.connection.play(src, {
                 volume: .64,
                 bitrate: 128,
                 highWaterMark: 1024,
@@ -105,7 +189,19 @@ class Music {
                 fec: true
             });
 
-            this.msg.channel.send(`> 正在播放：${info.title}`);
+            let description = '';
+
+            if (info.viewCount != -1) {
+                description += `:eyes:　${Util.humanReadNum(info.viewCount)}`;
+            }
+            if (info.likes != -1) {
+                if (info.likes != -1) {
+                    description += '　';
+                }
+                description += `:heart:　${Util.humanReadNum(info.likes)}`;
+            }
+
+            Util.sendEmbed(this.msg, info.title, description)
             this.me.playing = true;
 
             this.me.dispatcher.on('finish', () => {
@@ -116,11 +212,11 @@ class Music {
             });
 
             this.me.dispatcher.on('error', (e) => {
-                sendingError(this.msg, e);
+                Util.sendErr(this.msg, e);
             });
         } catch (e) {
             this.me.playing = false;
-            sendingError(this.msg, e);
+            Util.sendErr(this.msg, e);
         }
     }
 
@@ -147,46 +243,25 @@ class Music {
     }
 }
 
-function sendingError(msg, error) {
-    msg.channel.send(`> 錯誤 \n > ${error}`);
-}
+const client = new Discord.Client();
 
-async function join(msg) {
-    // 如果使用者正在頻道中
-    if (msg.member.voice.channel !== null) {
-        // Bot 加入語音頻道
-        await msg.member.voice.channel.join().then(conn => {
-            Bucket.find(msg).connection = conn;
-            msg.channel.send('☆歡迎使用 Music Start!☆');
-        }).catch(e => {
-            sendingError(msg, e);
-        });
-    } else {
-        msg.channel.send('請先進入語音頻道');
-    }
-}
-
-// 連上線時的事件
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 });
 
 client.on('message', async (msg) => {
-
     // 如果發送訊息的地方不是語音群（可能是私人），就 return
     if (!msg.guild) return;
+    if (!msg.content.startsWith('.')) return;
 
     const mu = new Music(msg);
     const me = Bucket.find(msg);
+    const content = msg.content.slice(1).trim();
 
-    // .join: Join this bot to voice channel
-    if (msg.content === `.join`) {
-        join(msg);
-    }
-
+    // Handle ..*
     // ..[url] Play music on Youtube by url
     // ..      Pause or Resume
-    if (msg.content.indexOf('..') > -1) {
+    if (msg.content.startsWith('..')) {
         let url = msg.content.slice(2).trim();
         if (url === "") {
             mu.pauseOrResume();
@@ -195,36 +270,48 @@ client.on('message', async (msg) => {
         }
     }
 
-    // .bye End task
-    if (msg.content === `.bye`) {
-        if (me.connection && me.connection.status === 0) {
-            msg.channel.send('ㄅㄅ');
-            me.connection.disconnect();
-        } else {
-            msg.channel.send('機器人未加入任何頻道');
+    // Handle .*
+    switch (content) {
+        // Join this bot to voice channel
+        case 'join':
+            Util.join(msg);
+            break;
+        case 'bye':
+            Util.bye(msg);
+            break;
+        case 'help':
+            Util.help(msg);
+            break;
+        case 'next':
+            mu.playQueue(me.queue.next(1));
+            break;
+        case 'pre':
+            mu.playQueue(me.queue.next(-1));
+            break;
+        case 'list':
+            me.queue.show(msg);
+            break;
+        case '統神':
+            mu.play('https://www.youtube.com/watch?v=072tU1tamd0');
+            break;
+    }
+
+    // .jmp, .jump can jump to the # of songs
+    if (msg.content.startsWith(`.jmp`) || msg.content.startsWith(`.jump`)) {
+        try {
+            let index = msg.content
+                .replace('.jmp', '')
+                .replace('.jump', '')
+                .trim();
+
+            mu.playQueue(me.queue.jmp(parseInt(index)));
+        } catch (e) {
+            Util.error(e);
         }
     }
 
-    // .help prints help message
-    if (msg.content === `.help`) {
-        msg.channel.send('^_^ 還沒弄好');
-    }
-
-    if (msg.content === `.next`) {
-        mu.playQueue(me.queue.next(1));
-    }
-
-    if (msg.content === `.pre`) {
-        mu.playQueue(me.queue.pre(1));
-    }
-
-    // .list show list
-    if (msg.content === `.list`) {
-        me.queue.show(msg);
-    }
-
     // .vol can set volume
-    if (msg.content.indexOf(`.vol`) > -1) {
+    if (msg.content.startsWith(`.vol`)) {
         let volume = msg.content.replace(`.vol`, '').trim();
 
         if (!me.dispatcher) {
@@ -242,10 +329,6 @@ client.on('message', async (msg) => {
                 }
             }
         }
-    }
-
-    if (msg.content === `.統神`) {
-        mu.play('https://www.youtube.com/watch?v=072tU1tamd0');
     }
 });
 
