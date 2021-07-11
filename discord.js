@@ -16,7 +16,7 @@ class Util {
         msg.channel.send('^_^ 還沒弄好');
     }
 
-    // @param num: Intger
+    // @param num: Integer
     static humanReadNum(num) {
         return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
@@ -88,8 +88,13 @@ class Queue {
         return this.list.length;
     }
 
+    _genericIndex(index){
+        index = index % this.len;
+        return (index < 0) ? index + this.len : index;
+    }
+
     isEmpty() {
-        this.list.length === 0;
+        this.len === 0;
     }
 
     en(url) {
@@ -97,15 +102,18 @@ class Queue {
     }
 
     next(num) {
-        let index = (this.index + num) % this.len
-        return (index < 0) ? this.jmp(index + this.len) : this.jmp(index);
+        return this.jump(this.index + num);
     }
 
-    jmp(index) {
-        if (this.isEmpty()) throw ('Queue is empty');
-        index = index % this.len;
-        this.index = (index < 0) ? index + this.len : index;
+    // @param index can be any integer.
+    jump(index) {
+        if (this.isEmpty()) throw ('播放清單是空的');
+        this.index = this._genericIndex(index);
         return this.list[this.index];
+    }
+    
+    remove(index){
+        this.list.splice(this._genericIndex(index), 1);
     }
 
     show(msg) {
@@ -296,17 +304,29 @@ client.on('message', async (msg) => {
             break;
     }
 
-    // .jmp, .jump can jump to the # of songs
+    // .jmp, .jump jump to the # of songs in the queue
     if (msg.content.startsWith(`.jmp`) || msg.content.startsWith(`.jump`)) {
+        let index = msg.content
+            .replace('.jmp', '')
+            .replace('.jump', '')
+            .trim();
         try {
-            let index = msg.content
-                .replace('.jmp', '')
-                .replace('.jump', '')
-                .trim();
-
-            mu.playQueue(me.queue.jmp(parseInt(index)));
+            mu.playQueue(me.queue.jump(parseInt(index)));
         } catch (e) {
-            Util.error(e);
+            Util.senderr(msg, e);
+        }
+    }
+
+    // .rm, .remoev remove the # of songs
+    if (msg.content.startsWith(`.rm`) || msg.content.startsWith(`.remove`)) {
+        let index = msg.content
+            .replace('.rm', '')
+            .replace('.remove', '')
+            .trim();
+        try {
+            me.queue.remove(parseInt(index));
+        } catch (e) {
+            Util.senderr(msg, e);
         }
     }
 
