@@ -1,6 +1,6 @@
 const Discord = require('discord.js');
 const ytdl = require('ytdl-core');
-const { token } = require('./token.json');
+const token = require('process').env.DiscordToken || require('./token.json').token;
 
 class Util {
     static bye(msg) {
