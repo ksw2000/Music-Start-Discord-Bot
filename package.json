@@ -13,5 +13,9 @@
     "start": "node discord.js"
   },
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": "14.17.3",
+    "npm": "7.19.1"
+  }
 }
