@@ -69,11 +69,7 @@ class Bucket {
     }
 
     static find(msg) {
-        if (typeof Bucket.instant[msg.guild.id] === 'undefined') {
-            return new Bucket(msg);
-        } else {
-            return Bucket.instant[msg.guild.id];
-        }
+        return Bucket.instant[msg.guild.id] || new Bucket(msg);
     }
 }
 
@@ -86,6 +82,10 @@ class Queue {
 
     get len() {
         return this.list.length;
+    }
+
+    get info(){
+        return this.list[this.index];
     }
 
     _genericIndex(index){
@@ -142,12 +142,11 @@ class MusicInfo {
     }
 
     static fromDetails(detail) {
-        let url = (typeof detail.videoId === 'undefined') ? null : `https://www.youtube.com/watch?v=${detail.videoId}`;
-        let title = typeof detail.title === 'undefined' ? "" : detail.title;
-        let viewCount = typeof detail.viewCount === 'undefined' ? -1 : detail.viewCount;
-        let likes = typeof detail.likes === 'undefined' ? -1 : detail.likes;
-
-        if (url === null) return null;
+        if (!detail.videoId) return null;
+        let url = `https://www.youtube.com/watch?v=${detail.videoId}`;
+        let title = detail.title || "";
+        let viewCount = detail.viewCount || -1;
+        let likes = detail.likes || -1;
         return new MusicInfo(url, title, likes, viewCount);
     }
 }
@@ -168,7 +167,7 @@ class Music {
 
                 this.me.queue.en(info);
 
-                if (!this.me.playing) this.playQueue(info);
+                if (!this.me.playing) this.playQueue();
             } catch (e) {
                 Util.sendErr(this.msg, e);
             }
@@ -178,9 +177,10 @@ class Music {
         }
     }
 
-    // @param info: MusicInfo
-    async playQueue(info) {
-        console.log(info);
+    // @param q: Queue
+    async playQueue(q) {
+        let queue = q || this.me.queue;
+        let info = queue.info;
         try {
             // if not joined yet
             if (this.me.connection === null) {
@@ -188,7 +188,6 @@ class Music {
             }
 
             const src = ytdl(info.url, { filter: 'audioonly' });
-            console.log(src);
             this.me.dispatcher = this.me.connection.play(src, {
                 volume: .64,
                 bitrate: 128,
@@ -216,7 +215,8 @@ class Music {
                 this.me.playing = false;
 
                 // goto next
-                this.playQueue(this.me.queue.next(1));
+                queue.next(1);
+                this.playQueue();
             });
 
             this.me.dispatcher.on('error', (e) => {
@@ -291,10 +291,12 @@ client.on('message', async (msg) => {
             Util.help(msg);
             break;
         case 'next':
-            mu.playQueue(me.queue.next(1));
+            me.queue.next(1)
+            mu.playQueue();
             break;
         case 'pre':
-            mu.playQueue(me.queue.next(-1));
+            me.queue.next(-1)
+            mu.playQueue();
             break;
         case 'list':
             me.queue.show(msg);
@@ -311,7 +313,8 @@ client.on('message', async (msg) => {
             .replace('.jump', '')
             .trim();
         try {
-            mu.playQueue(me.queue.jump(parseInt(index)));
+            me.queue.jump(parseInt(index));
+            mu.playQueue();
         } catch (e) {
             Util.senderr(msg, e);
         }
