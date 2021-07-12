@@ -299,6 +299,7 @@ client.on('message', async (msg) => {
             mu.playQueue();
             break;
         case 'list':
+        case 'ls':
             me.queue.show(msg);
             break;
         case '統神':
