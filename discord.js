@@ -3,12 +3,12 @@ const ytdl = require('ytdl-core');
 const token = require('process').env.DiscordToken || require('./token.json').token;
 
 class Util {
-    static bye(msg) {
+    // @params mu: Music
+    static left(msg, mu) {
         if (Bucket.find(msg).connection && Bucket.find(msg).connection.status === 0) {
             msg.channel.send('ㄅㄅ');
+            mu.pause();
             Bucket.find(msg).connection.disconnect();
-        } else {
-            msg.channel.send('機器人未加入任何頻道');
         }
     }
 
@@ -21,7 +21,7 @@ class Util {
         return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
 
-    static async join(msg) {
+    static async attach(msg) {
         // 如果使用者正在頻道中
         if (msg.member.voice.channel !== null) {
             // Bot 加入語音頻道
@@ -38,7 +38,7 @@ class Util {
 
     static randomHappy() {
         const emojis = ['(*´∀`)~♥', 'σ`∀´)σ', '(〃∀〃)', '(శωశ)', '(✪ω✪)', '(๑´ㅂ`๑)', '(◕ܫ◕)', '( • ̀ω•́ )'];
-        return emojis[Math.floor(Math.random() * emojis.length)];
+        return emojis[~~(Math.random() * emojis.length)];
     }
 
     static sendEmbed(msg, title, description) {
@@ -51,6 +51,18 @@ class Util {
 
     static sendErr(msg, error) {
         msg.channel.send(`> 錯誤 \n > ${error}`);
+    }
+
+    // volume: Float [0, 1]
+    static setVolume(msg, volume) {
+        volume = parseFloat(volume);
+        if (isNaN(volume)) {
+            this.sendErr(msg, 'Syntax error!');
+        } else if (volume < 0 || volume > 1) {
+            this.sendErr(msg, '音量必需介於區間 [0, 1]');
+        } else {
+            Bucket.find(msg).volume = volume;
+        }
     }
 }
 
@@ -65,7 +77,15 @@ class Bucket {
         this.dispatcher = null;
         this.queue = new Queue();
         this.playing = false;
+        this.volume = .64;
         Bucket.instant[msg.guild.id] = this;
+    }
+
+    static set volume(v) {
+        this.volume = v;
+        if (this.dispatcher) {
+            this.dispatcher.setVolume(v);
+        }
     }
 
     static find(msg) {
@@ -84,11 +104,11 @@ class Queue {
         return this.list.length;
     }
 
-    get info(){
+    get info() {
         return this.list[this.index];
     }
 
-    _genericIndex(index){
+    _genericIndex(index) {
         index = index % this.len;
         return (index < 0) ? index + this.len : index;
     }
@@ -111,9 +131,13 @@ class Queue {
         this.index = this._genericIndex(index);
         return this.list[this.index];
     }
-    
-    remove(index){
-        this.list.splice(this._genericIndex(index), 1);
+
+    remove(index) {
+        index = this._genericIndex(index);
+        if (index <= this.index) {
+            this.index--;
+        }
+        this.list.splice(index, 1);
     }
 
     show(msg) {
@@ -130,6 +154,23 @@ class Queue {
             }
             Util.sendEmbed(msg, '播放清單', text);
         }
+    }
+
+    shuffle() {
+        for (let i = 0; i < this.len; i++) {
+            let j = ~~(Math.random() * i);
+            if (i != j && i != this.index && j != this.index) {
+                // swap i and j
+                let tmp = this.list[i]
+                this.list[i] = this.list[j]
+                this.list[j] = tmp
+            }
+        }
+    }
+
+    reset() {
+        this.list = [];
+        this.index = 0;
     }
 }
 
@@ -178,21 +219,21 @@ class Music {
     }
 
     // @param q: Queue
-    async playQueue(q) {
+    async playQueue(q, disableMsg) {
         let queue = q || this.me.queue;
         let info = queue.info;
         try {
             // if not joined yet
             if (this.me.connection === null) {
-                await Util.join(this.msg);
+                await Util.attach(this.msg);
             }
 
             const src = ytdl(info.url, { filter: 'audioonly' });
             this.me.dispatcher = this.me.connection.play(src, {
-                volume: .64,
-                bitrate: 128,
+                volume: this.me.volume,
+                bitrate: 'auto',
                 highWaterMark: 1024,
-                plp: 0.5,
+                plp: 0.25,
                 fec: true
             });
 
@@ -208,7 +249,10 @@ class Music {
                 description += `:heart:　${Util.humanReadNum(info.likes)}`;
             }
 
-            Util.sendEmbed(this.msg, info.title, description)
+            if (!(typeof disableMsg === "boolean" && disableMsg === true)){
+                Util.sendEmbed(this.msg, info.title, description)
+            }
+
             this.me.playing = true;
 
             this.me.dispatcher.on('finish', () => {
@@ -229,25 +273,33 @@ class Music {
     }
 
     pause() {
-        this.msg.reply('暫停');
         if (this.me.dispatcher) {
             this.me.dispatcher.pause();
         }
     }
-
+    
     resume() {
-        this.msg.reply('繼續播放');
         if (this.me.dispatcher) {
             this.me.dispatcher.resume();
         }
     }
-
+    
     pauseOrResume() {
         if (this.me.dispatcher.paused) {
+            this.msg.reply('繼續播放');
             this.resume();
         } else {
+            this.msg.reply('暫停');
             this.pause();
         }
+    }
+
+    async stop(q) {
+        let queue = q || this.me.queue;
+        queue.jump(0);
+        await this.playQueue(queue, true);
+        this.pause();
+        this.msg.channel.send('> 停止播放，輸入 .. 以恢復');
     }
 }
 
@@ -282,10 +334,12 @@ client.on('message', async (msg) => {
     switch (content) {
         // Join this bot to voice channel
         case 'join':
-            Util.join(msg);
+        case 'attach':
+            Util.attach(msg);
             break;
         case 'bye':
-            Util.bye(msg);
+        case 'left':
+            Util.left(msg, mu);
             break;
         case 'help':
             Util.help(msg);
@@ -302,8 +356,19 @@ client.on('message', async (msg) => {
         case 'ls':
             me.queue.show(msg);
             break;
+        case 'shuffle': //shuffle the queue
+            me.queue.shuffle();
+            break;
+        case 'clear': // reset the queue
+            me.queue.reset();
+            msg.channel.send(`已刪除播放清單！`);
+            break;
         case '統神':
             mu.play('https://www.youtube.com/watch?v=072tU1tamd0');
+            break;
+        case 'stop':
+        case '..':
+            mu.stop(me.queue);
             break;
     }
 
@@ -334,24 +399,13 @@ client.on('message', async (msg) => {
         }
     }
 
-    // .vol can set volume
+    // .vol can set or get volume
     if (msg.content.startsWith(`.vol`)) {
-        let volume = msg.content.replace(`.vol`, '').trim();
-
-        if (!me.dispatcher) {
-            msg.reply('^_^ 沒有歌你是在設三小');
-        } else if (volume) {
-            volume = parseFloat(volume);
-            if (isNaN(volume)) {
-                msg.reply('Syntax error!');
-            } else if (volume < 0 || volume > 1) {
-                msg.reply('音量必需介於區間 [0, 1]');
-            } else {
-                me.dispatcher.setVolume(volume);
-                if (volume >= 0.9) {
-                    msg.reply('tshàu-hī-lâng 逆？');
-                }
-            }
+        let vol = msg.content.replace(`.vol`, '').trim();
+        if (vol === "") {
+            msg.channel.send(`目前音量：${Bucket.find(msg).volume}`)
+        } else {
+            Util.setVolume(msg, vol);
         }
     }
 });
