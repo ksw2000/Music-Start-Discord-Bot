@@ -1,6 +1,7 @@
 const Discord = require('discord.js');
 const ytdl = require('ytdl-core');
 const token = require('process').env.DiscordToken || require('./token.json').token;
+const fs = require('fs');
 
 class Util {
     // @params mu: Music
@@ -13,7 +14,11 @@ class Util {
     }
 
     static help(msg) {
-        msg.channel.send('^_^ 還沒弄好');
+        let helpText = fs.readFileSync('help.md', {
+            encoding: 'utf-8',
+            flag: 'r'
+        });
+        msg.channel.send(helpText);
     }
 
     // @param num: Integer
@@ -62,6 +67,7 @@ class Util {
             this.sendErr(msg, '音量必需介於區間 [0, 1]');
         } else {
             Bucket.find(msg).volume = volume;
+            Bucket.find(msg).dispatcher.setVolume(volume);
         }
     }
 }
@@ -79,13 +85,6 @@ class Bucket {
         this.playing = false;
         this.volume = .64;
         Bucket.instant[msg.guild.id] = this;
-    }
-
-    static set volume(v) {
-        this.volume = v;
-        if (this.dispatcher) {
-            this.dispatcher.setVolume(v);
-        }
     }
 
     static find(msg) {
@@ -196,6 +195,7 @@ class Music {
     constructor(msg) {
         this.msg = msg;
         this.me = Bucket.find(msg);
+        this.startAt = 0;
     }
 
     async play(url) {
@@ -230,10 +230,11 @@ class Music {
 
             const src = ytdl(info.url, { filter: 'audioonly' });
             this.me.dispatcher = this.me.connection.play(src, {
+                seek: this.startAt,
                 volume: this.me.volume,
                 bitrate: 'auto',
                 highWaterMark: 1024,
-                plp: 0.25,
+                plp: .1,
                 fec: true
             });
 
@@ -249,7 +250,7 @@ class Music {
                 description += `:heart:　${Util.humanReadNum(info.likes)}`;
             }
 
-            if (!(typeof disableMsg === "boolean" && disableMsg === true)){
+            if (disableMsg !== true){
                 Util.sendEmbed(this.msg, info.title, description)
             }
 
@@ -275,12 +276,13 @@ class Music {
     pause() {
         if (this.me.dispatcher) {
             this.me.dispatcher.pause();
+            this.me.pauseAt = this.me.dispatcher.streamTime;
         }
     }
     
     resume() {
         if (this.me.dispatcher) {
-            this.me.dispatcher.resume();
+            this.seek(this.me.pauseAt / 1000)
         }
     }
     
@@ -293,13 +295,24 @@ class Music {
             this.pause();
         }
     }
-
-    async stop(q) {
-        let queue = q || this.me.queue;
-        queue.jump(0);
-        await this.playQueue(queue, true);
+    
+    async stop() {
+        this.me.queue.jump(0);
+        await this.playQueue(this.me.queue, true);
         this.pause();
-        this.msg.channel.send('> 停止播放，輸入 .. 以恢復');
+        this.me.pauseAt = 0;
+    }
+
+    // @param time: Number (unit: seconds)
+    async seek(time){
+        if (this.me.dispatcher) {
+            this.msg.reply(`seeking... ${Util.randomHappy()}`);
+            this.me.dispatcher.pause();
+            this.startAt = time;
+            await this.playQueue(this.me.queue, true);
+            this.startAt = 0;
+            this.msg.reply(`seek完成 ${Util.randomHappy()} 繼續播放~`);
+        }
     }
 }
 
@@ -338,7 +351,6 @@ client.on('message', async (msg) => {
             Util.attach(msg);
             break;
         case 'bye':
-        case 'left':
             Util.left(msg, mu);
             break;
         case 'help':
@@ -363,12 +375,9 @@ client.on('message', async (msg) => {
             me.queue.reset();
             msg.channel.send(`已刪除播放清單！`);
             break;
-        case '統神':
-            mu.play('https://www.youtube.com/watch?v=072tU1tamd0');
-            break;
         case 'stop':
-        case '..':
-            mu.stop(me.queue);
+            mu.stop();
+            msg.channel.send('> 停止播放，輸入 .. 以恢復');
             break;
     }
 
@@ -406,6 +415,25 @@ client.on('message', async (msg) => {
             msg.channel.send(`目前音量：${Bucket.find(msg).volume}`)
         } else {
             Util.setVolume(msg, vol);
+            msg.channel.send(`已設定音量為：${Bucket.find(msg).volume}`)
+        }
+    }
+
+    // .seek
+    if (msg.content.startsWith(`.seek`)) {
+        let time = msg.content
+            .replace('.seek', '')
+            .trim();
+        let timepart = time.split(':');
+        let secs = 0;
+        for(let i=timepart.length-1, j=0; i>=0; i--, j++){
+            secs += Number(timepart[i]) * (60 ** j);
+        }
+        
+        try {
+            mu.seek(secs)
+        } catch (e) {
+            Util.senderr(msg, e);
         }
     }
 });
