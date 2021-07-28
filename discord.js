@@ -171,6 +171,12 @@ class Queue {
         this.list = [];
         this.index = 0;
     }
+
+    sort(){
+        this.list.sort((a, b)=>{
+            return a.title.localeCompare(b.title)
+        });
+    }
 }
 
 class MusicInfo {
@@ -219,7 +225,7 @@ class Music {
     }
 
     // @param q: Queue
-    async playQueue(q, disableMsg) {
+    async playQueue(q, callback) {
         let queue = q || this.me.queue;
         let info = queue.info;
         try {
@@ -238,23 +244,10 @@ class Music {
                 fec: true
             });
 
-            let description = '';
-
-            if (info.viewCount != -1) {
-                description += `:eyes:　${Util.humanReadNum(info.viewCount)}`;
-            }
-            if (info.likes != -1) {
-                if (info.likes != -1) {
-                    description += '　';
-                }
-                description += `:heart:　${Util.humanReadNum(info.likes)}`;
-            }
-
-            if (disableMsg !== true){
-                Util.sendEmbed(this.msg, info.title, description)
-            }
-
             this.me.playing = true;
+            if(callback){
+                callback(info);
+            }
 
             this.me.dispatcher.on('finish', () => {
                 this.me.playing = false;
@@ -271,6 +264,20 @@ class Music {
             this.me.playing = false;
             Util.sendErr(this.msg, e);
         }
+    }
+
+    showInfoCard(info){
+        let description = '';
+        if (info.viewCount != -1) {
+            description += `:eyes:　${Util.humanReadNum(info.viewCount)}`;
+        }
+        if (info.likes != -1) {
+            if (info.likes != -1) {
+                description += '　';
+            }
+            description += `:heart:　${Util.humanReadNum(info.likes)}`;
+        }
+        Util.sendEmbed(this.msg, info.title, description)
     }
 
     pause() {
@@ -298,7 +305,7 @@ class Music {
     
     async stop() {
         this.me.queue.jump(0);
-        await this.playQueue(this.me.queue, true);
+        await this.playQueue(this.me.queue, this.showInfoCard);
         this.pause();
         this.me.pauseAt = 0;
     }
@@ -306,12 +313,12 @@ class Music {
     // @param time: Number (unit: seconds)
     async seek(time){
         if (this.me.dispatcher) {
-            this.msg.reply(`seeking... ${Util.randomHappy()}`);
             this.me.dispatcher.pause();
             this.startAt = time;
-            await this.playQueue(this.me.queue, true);
-            this.startAt = 0;
-            this.msg.reply(`seek完成 ${Util.randomHappy()} 繼續播放~`);
+            this.playQueue(this.me.queue, (info)=>{
+                this.showInfoCard(info);
+                this.startAt = 0;
+            });
         }
     }
 }
@@ -374,6 +381,9 @@ client.on('message', async (msg) => {
         case 'clear': // reset the queue
             me.queue.reset();
             msg.channel.send(`已刪除播放清單！`);
+            break;
+        case 'sort':
+            me.queue.sort();
             break;
         case 'stop':
             mu.stop();
