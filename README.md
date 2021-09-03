@@ -51,3 +51,9 @@ npm start
 ### 其他實用腳本
 
 如果你在 Linux 環境開發，可以直接呼叫 `build.sh` 做環境建置。另外，開發完成後可以呼叫 `deploy.sh` 這個腳本會自動於背景運行 `discord.ts`，若前一次的程式仍在運行，`deploy.sh`會先 kill 掉先前的程式，才做佈署
+
+## 為什麼叫 Music Start ?
+
+因為 µ's 有一首歌就叫 **Music S.T.A.R.T!!** :heartbeat:
+
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/NeaeJ0u3kR0/0.jpg)](https://www.youtube.com/watch?v=NeaeJ0u3kR0)
