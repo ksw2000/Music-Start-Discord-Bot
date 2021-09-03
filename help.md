@@ -7,13 +7,15 @@
 4. `..` 暫停或播放
 5. `.stop` 停止播放，但不會將 Music Start 踢出語音房
 6. `.list` 列出播放清單 alias: `.ls`
-7. `.jump[index]` 直接跳到播放清單的某一首歌 alias: `.jmp`
-8. `.remove[index]` 直接跳到播放清單的某一首歌 alias: `.rm`
+7. `.jump [index]` 直接跳到播放清單的某一首歌 alias: `.jmp`
+8. `.remove [index]` 直接跳到播放清單的某一首歌 alias: `.rm`
 9. `.shuffle` 將播放清單隨機打亂，正在播放的歌位置不會受影響
 10. `.next` 播放下一首
 11. `.pre` 播放前一首
-12. `.vol[num]` 設定音量 num 介於 [0, 1] 間，若不指定 num 則會顯示目前的音量，預設為 0.64
-13. `.seek[time]` 跳到歌曲的某個時間點，time 的單位為秒
+12. `.vol [num]` 設定音量 num 介於 [0, 1] 間，若不指定 num 則會顯示目前的音量，預設為 0.64
+13. `.seek [time]` 跳到歌曲的某個時間點，time 的單位為秒
+14. `.json` 將播放清單以 json 格式輸出，此方法可以將喜歡的曲目存成文字檔，下次聽歌時可以做批次輸入
+15. `.json [json string]` 將 json 格式的播放清單一次加入到播放清單中
 
 ☆ 參數說明
 

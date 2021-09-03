@@ -4,41 +4,9 @@ const token = require('process').env.DiscordToken || require('./token.json').tok
 const fs = require('fs');
 
 class Util {
-    // @params mu: Music
-    static left(msg: Discord.Message, mu: Music) {
-        if (Bucket.find(msg).connection && Bucket.find(msg).connection?.status === 0) {
-            msg.channel.send('ㄅㄅ');
-            mu.pause();
-            Bucket.find(msg).connection?.disconnect();
-        }
-    }
-
-    static help(msg: Discord.Message) {
-        let helpText = fs.readFileSync('help.md', {
-            encoding: 'utf-8',
-            flag: 'r'
-        });
-        msg.channel.send(helpText);
-    }
-
     // @param num: Integer
     static humanReadNum(num: number) {
         return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    }
-
-    static async attach(msg: Discord.Message) {
-        // 如果使用者正在頻道中
-        if (msg.member?.voice.channel !== null) {
-            // Bot 加入語音頻道
-            await msg.member?.voice.channel.join().then(conn => {
-                Bucket.find(msg).connection = conn;
-                msg.channel.send(`☆歡迎使用 Music Start! ${Util.randomHappy()} ☆`);
-            }).catch(e => {
-                Util.sendErr(msg, e);
-            });
-        } else {
-            msg.channel.send('請先進入語音頻道');
-        }
     }
 
     static randomHappy() {
@@ -76,6 +44,7 @@ class Bucket {
     connection: Discord.VoiceConnection|null;
     dispatcher: Discord.StreamDispatcher|null;
     queue: Queue;
+    music: Music;
     playing: boolean;
     volume: number;
     pauseAt: number;
@@ -89,6 +58,7 @@ class Bucket {
         // https://discord.js.org/#/docs/main/stable/class/StreamDispatcher
         this.dispatcher = null;
         this.queue = new Queue();
+        this.music = new Music(msg, this);
         this.playing = false;
         this.volume = .64;
         this.pauseAt = 0;
@@ -215,12 +185,12 @@ class MusicInfo {
 
 class Music {
     msg: Discord.Message;
-    me: Bucket;
+    bucket: Bucket;
     startAt: number;
 
-    constructor(msg:Discord.Message) {
+    constructor(msg:Discord.Message, bucket: Bucket) {
         this.msg = msg;
-        this.me = Bucket.find(msg);
+        this.bucket = bucket;
         this.startAt = 0;
     }
 
@@ -232,9 +202,9 @@ class Music {
                 const info = MusicInfo.fromDetails(res.videoDetails);
                 if (info === null) throw ('無法載入音樂');
 
-                this.me.queue.en(info);
+                this.bucket.queue.en(info);
 
-                if (!this.me.playing) this.playQueue();
+                if (!this.bucket.playing) this.playQueue();
             } catch (e) {
                 Util.sendErr(this.msg, e);
             }
@@ -246,42 +216,42 @@ class Music {
 
     // @param q: Queue
     async playQueue(callback?: (info:MusicInfo)=>void) {
-        let queue = this.me.queue;
+        let queue = this.bucket.queue;
         let info = queue.info;
         try {
             // if not joined yet
-            if (this.me.connection === null) {
-                await Util.attach(this.msg);
+            if (this.bucket.connection === null) {
+                await Command.attach(this.msg);
             }
 
             const src = ytdl(info.url, { filter: 'audioonly' });
-            this.me.dispatcher = this.me.connection!.play(src, {
+            this.bucket.dispatcher = this.bucket.connection!.play(src, {
                 seek: this.startAt,
-                volume: this.me.volume,
+                volume: this.bucket.volume,
                 bitrate: 'auto',
                 highWaterMark: 1024,
                 plp: .1,
                 fec: true
             });
 
-            this.me.playing = true;
+            this.bucket.playing = true;
             if(callback){
                 callback(info);
             }
 
-            this.me.dispatcher.on('finish', () => {
-                this.me.playing = false;
+            this.bucket.dispatcher.on('finish', () => {
+                this.bucket.playing = false;
 
                 // goto next
                 queue.next(1);
                 this.playQueue();
             });
 
-            this.me.dispatcher.on('error', (e) => {
+            this.bucket.dispatcher.on('error', (e) => {
                 Util.sendErr(this.msg, e);
             });
         } catch (e) {
-            this.me.playing = false;
+            this.bucket.playing = false;
             Util.sendErr(this.msg, e);
         }
     }
@@ -301,20 +271,20 @@ class Music {
     }
 
     pause() {
-        if (this.me.dispatcher) {
-            this.me.dispatcher.pause();
-            this.me.pauseAt = this.me.dispatcher.streamTime;
+        if (this.bucket.dispatcher) {
+            this.bucket.dispatcher.pause();
+            this.bucket.pauseAt = this.bucket.dispatcher.streamTime;
         }
     }
     
     resume() {
-        if (this.me.dispatcher) {
-            this.seek(this.me.pauseAt / 1000)
+        if (this.bucket.dispatcher) {
+            this.seek(this.bucket.pauseAt / 1000)
         }
     }
     
     pauseOrResume() {
-        if (this.me.dispatcher?.paused) {
+        if (this.bucket.dispatcher?.paused) {
             this.msg.reply('繼續播放');
             this.resume();
         } else {
@@ -324,15 +294,15 @@ class Music {
     }
     
     async stop() {
-        this.me.queue.jump(0);
+        this.bucket.queue.jump(0);
         await this.playQueue(this.showInfoCard);
         this.pause();
-        this.me.pauseAt = 0;
+        this.bucket.pauseAt = 0;
     }
 
     async seek(time: number){
-        if (this.me.dispatcher) {
-            this.me.dispatcher.pause();
+        if (this.bucket.dispatcher) {
+            this.bucket.dispatcher.pause();
             this.startAt = time;
             this.playQueue((info)=>{
                 this.showInfoCard(info);
@@ -342,7 +312,64 @@ class Music {
     }
 }
 
+class Command{
+    static async attach(msg: Discord.Message) {
+        // 如果使用者正在頻道中
+        if (msg.member?.voice.channel !== null) {
+            // Bot 加入語音頻道
+            await msg.member?.voice.channel.join().then(conn => {
+                Bucket.find(msg).connection = conn;
+                msg.channel.send(`☆歡迎使用 Music Start! ${Util.randomHappy()} ☆`);
+            }).catch(e => {
+                Util.sendErr(msg, e);
+            });
+        } else {
+            msg.channel.send('請先進入語音頻道');
+        }
+    }
+
+    static bye(msg: Discord.Message, bucket: Bucket) {
+        if (bucket.connection && bucket.connection?.status === 0) {
+            msg.channel.send('ㄅㄅ');
+            bucket.music.pause();
+            bucket.connection?.disconnect();
+        }
+    }
+
+    static help(msg: Discord.Message) {
+        let helpText = fs.readFileSync('help.md', {
+            encoding: 'utf-8',
+            flag: 'r'
+        });
+        msg.channel.send(helpText);
+    }
+
+    static next(bucket: Bucket){
+        bucket.queue.next(1);
+        bucket.music.playQueue();
+    }
+
+    static pre(bucket: Bucket){
+        bucket.queue.next(-1);
+        bucket.music.playQueue();
+    }
+
+    static ls(msg: Discord.Message, bucket: Bucket){
+        bucket.queue.show(msg);
+    }
+
+    static listJson(msg: Discord.Message, bucket: Bucket){
+        let url: Array<string> = []
+        bucket.queue.list.forEach((info:MusicInfo)=>{
+            url.push(info.url.replace('https://www.youtube.com/watch?v=', ''))
+        })
+        msg.channel.send('```\n' + JSON.stringify(url, null, '\t') + '\n```');
+    }
+}
+
 const client = new Discord.Client();
+
+client.login(token);
 
 client.on('ready', () => {
     console.log(`Logged in as ${client.user?.tag}!`);
@@ -353,8 +380,7 @@ client.on('message', async (msg) => {
     if (!msg.guild) return;
     if (!msg.content.startsWith('.')) return;
 
-    const mu = new Music(msg);
-    const me = Bucket.find(msg);
+    const bucket = Bucket.find(msg);
     const content = msg.content.slice(1).trim();
 
     // Handle ..*
@@ -363,9 +389,9 @@ client.on('message', async (msg) => {
     if (msg.content.startsWith('..')) {
         let url = msg.content.slice(2).trim();
         if (url === "") {
-            mu.pauseOrResume();
+            bucket.music.pauseOrResume();
         } else {
-            mu.play(url);
+            bucket.music.play(url);
         }
     }
 
@@ -374,38 +400,36 @@ client.on('message', async (msg) => {
         // Join this bot to voice channel
         case 'join':
         case 'attach':
-            Util.attach(msg);
+            Command.attach(msg);
             break;
         case 'bye':
-            Util.left(msg, mu);
+            Command.bye(msg, bucket);
             break;
         case 'help':
-            Util.help(msg);
+            Command.help(msg);
             break;
         case 'next':
-            me.queue.next(1)
-            mu.playQueue();
+            Command.next(bucket);
             break;
         case 'pre':
-            me.queue.next(-1)
-            mu.playQueue();
+            Command.pre(bucket);
             break;
         case 'list':
         case 'ls':
-            me.queue.show(msg);
+            Command.ls(msg, bucket);
             break;
         case 'shuffle': //shuffle the queue
-            me.queue.shuffle();
+            bucket.queue.shuffle();
             break;
         case 'clear': // reset the queue
-            me.queue.reset();
+            bucket.queue.reset();
             msg.channel.send(`已刪除播放清單！`);
             break;
         case 'sort':
-            me.queue.sort();
+            bucket.queue.sort();
             break;
         case 'stop':
-            mu.stop();
+            bucket.music.stop();
             msg.channel.send('> 停止播放，輸入 .. 以恢復');
             break;
     }
@@ -417,8 +441,8 @@ client.on('message', async (msg) => {
             .replace('.jump', '')
             .trim();
         try {
-            me.queue.jump(parseInt(index));
-            mu.playQueue();
+            bucket.queue.jump(parseInt(index));
+            bucket.music.playQueue();
         } catch (e) {
             Util.sendErr(msg, e);
         }
@@ -431,7 +455,7 @@ client.on('message', async (msg) => {
             .replace('.remove', '')
             .trim();
         try {
-            me.queue.remove(parseInt(index));
+            bucket.queue.remove(parseInt(index));
         } catch (e) {
             Util.sendErr(msg, e);
         }
@@ -460,11 +484,28 @@ client.on('message', async (msg) => {
         }
         
         try {
-            mu.seek(secs)
+            bucket.music.seek(secs);
         } catch (e) {
             Util.sendErr(msg, e);
         }
     }
-});
 
-client.login(token);
+    // .json
+    if (msg.content.startsWith(`.json`)) {
+        let args = msg.content
+            .replace('.json', '')
+            .trim();
+        if(args === ''){
+            Command.listJson(msg, bucket);
+        }else{
+            try{
+                let list: Array<string> = JSON.parse(args)
+                list.forEach(url => {
+                    bucket.music.play(url);
+                });
+            }catch(e){
+                Util.sendErr(msg, e)
+            }
+        }
+    }
+});
