@@ -66,8 +66,15 @@ class Bucket {
         Bucket.instant.set(this.id, this);
     }
 
-    static find(msg: Discord.Message) {
-        return Bucket.instant.get(msg.guild?.id || "") || new Bucket(msg);
+    static find(msg: Discord.Message) : Bucket{
+        // 為了避免第一次呼叫他的人消失
+        // Music 內的 msg 必需一直更新
+        let bucket: Bucket| undefined = Bucket.instant.get(msg.guild?.id || "");
+        if (bucket){
+            bucket.music.msg = msg;
+            return bucket;
+        }
+        return new Bucket(msg);
     }
 }
 
@@ -386,6 +393,9 @@ client.on('message', async (msg) => {
     // Handle ..*
     // ..[url] Play music on Youtube by url
     // ..      Pause or Resume
+
+    // 根據經驗還滿多人輸入 ... .... 之類的經常會誤觸
+    if (msg.content.startsWith('...')) return;
     if (msg.content.startsWith('..')) {
         let url = msg.content.slice(2).trim();
         if (url === "") {
