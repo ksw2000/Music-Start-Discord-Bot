@@ -3,7 +3,9 @@
 
 Music Start 是一個可以於 Discord 語音頻道播放 Youtube 音樂的 Discord 機器人
 
-這個專案依賴於 [Discord.js](https://github.com/discordjs/discord.js/releases/tag/12.5.3) v12 這個版本尚未支援 slash command，因此只能用簡單的語法操作。下一個版本的 Music Start 會開始支援 slash command 敬請期待。
+這個專案依賴於 [Discord.js](https://github.com/discordjs/discord.js/releases/tag/12.5.3) v12 這個版本尚未支援 slash command。目前已經有另一個專案支援 slash command 了！
+
+Slash command 版本：[Music Start Pro](https://github.com/liao2000/Music-Start-Discord-Bot-PRO)
 
 ## 將機器人加入至 Discord 群組
 
@@ -54,6 +56,6 @@ npm start
 
 ## 為什麼叫 Music Start ?
 
-因為 µ's 有一首歌就叫 **Music S.T.A.R.T!!** :heartbeat:
+因為 µ's 上台前都會喊 "Music ~ Start !"
 
 [![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/NeaeJ0u3kR0/0.jpg)](https://www.youtube.com/watch?v=NeaeJ0u3kR0)
