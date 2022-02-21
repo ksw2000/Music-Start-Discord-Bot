@@ -8,7 +8,7 @@
 5. `.stop` 停止播放，但不會將 Music Start 踢出語音房
 6. `.list` 列出播放清單 alias: `.ls`
 7. `.jump [index]` 直接跳到播放清單的某一首歌 alias: `.jmp`
-8. `.remove [index]` 直接跳到播放清單的某一首歌 alias: `.rm`
+8. `.remove [index]` 直接刪除播放清單的某一首歌 alias: `.rm`
 9. `.shuffle` 將播放清單隨機打亂，正在播放的歌位置不會受影響
 10. `.next` 播放下一首
 11. `.pre` 播放前一首
