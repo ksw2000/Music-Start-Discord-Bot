@@ -41,8 +41,8 @@ class Util {
 
 class Bucket {
     id: string;
-    connection: Discord.VoiceConnection|null;
-    dispatcher: Discord.StreamDispatcher|null;
+    connection: Discord.VoiceConnection | null;
+    dispatcher: Discord.StreamDispatcher | null;
     queue: Queue;
     music: Music;
     playing: boolean;
@@ -66,11 +66,11 @@ class Bucket {
         Bucket.instant.set(this.id, this);
     }
 
-    static find(msg: Discord.Message) : Bucket{
+    static find(msg: Discord.Message): Bucket {
         // 為了避免第一次呼叫他的人消失
         // Music 內的 msg 必需一直更新
-        let bucket: Bucket| undefined = Bucket.instant.get(msg.guild?.id || "");
-        if (bucket){
+        let bucket: Bucket | undefined = Bucket.instant.get(msg.guild?.id || "");
+        if (bucket) {
             bucket.music.msg = msg;
             return bucket;
         }
@@ -160,8 +160,8 @@ class Queue {
         this.index = 0;
     }
 
-    sort(){
-        this.list.sort((a, b)=>{
+    sort() {
+        this.list.sort((a, b) => {
             return a.title.localeCompare(b.title)
         });
     }
@@ -173,14 +173,14 @@ class MusicInfo {
     likes: number;
     viewCount: number;
 
-    constructor(url:string, title:string, likes:number, viewCount:number) {
+    constructor(url: string, title: string, likes: number, viewCount: number) {
         this.url = url;
         this.title = title;
         this.likes = likes;
         this.viewCount = viewCount;
     }
 
-    static fromDetails(detail:any) {
+    static fromDetails(detail: any) {
         if (!detail.videoId) return null;
         let url = `https://www.youtube.com/watch?v=${detail.videoId}`;
         let title = detail.title || "";
@@ -195,7 +195,7 @@ class Music {
     bucket: Bucket;
     startAt: number;
 
-    constructor(msg:Discord.Message, bucket: Bucket) {
+    constructor(msg: Discord.Message, bucket: Bucket) {
         this.msg = msg;
         this.bucket = bucket;
         this.startAt = 0;
@@ -222,7 +222,7 @@ class Music {
     }
 
     // @param q: Queue
-    async playQueue(callback?: (info:MusicInfo)=>void) {
+    async playQueue(callback?: (info: MusicInfo) => void) {
         let queue = this.bucket.queue;
         let info = queue.info;
         try {
@@ -236,13 +236,13 @@ class Music {
                 seek: this.startAt,
                 volume: this.bucket.volume,
                 bitrate: 'auto',
-                highWaterMark: 1024,
+                highWaterMark: 1 >> 32,
                 plp: .1,
                 fec: true
             });
 
             this.bucket.playing = true;
-            if(callback){
+            if (callback) {
                 callback(info);
             }
 
@@ -263,7 +263,7 @@ class Music {
         }
     }
 
-    showInfoCard(info: MusicInfo){
+    showInfoCard(info: MusicInfo) {
         let description = '';
         if (info.viewCount != -1) {
             description += `:eyes:　${Util.humanReadNum(info.viewCount)}`;
@@ -283,13 +283,13 @@ class Music {
             this.bucket.pauseAt = this.bucket.dispatcher.streamTime;
         }
     }
-    
+
     resume() {
         if (this.bucket.dispatcher) {
             this.seek(this.bucket.pauseAt / 1000)
         }
     }
-    
+
     pauseOrResume() {
         if (this.bucket.dispatcher?.paused) {
             this.msg.reply('繼續播放');
@@ -299,19 +299,19 @@ class Music {
             this.pause();
         }
     }
-    
+
     async stop() {
         this.bucket.queue.jump(0);
-        await this.playQueue(this.showInfoCard);
+        await this.playQueue();
         this.pause();
         this.bucket.pauseAt = 0;
     }
 
-    async seek(time: number){
+    async seek(time: number) {
         if (this.bucket.dispatcher) {
             this.bucket.dispatcher.pause();
             this.startAt = time;
-            this.playQueue((info)=>{
+            this.playQueue((info) => {
                 this.showInfoCard(info);
                 this.startAt = 0;
             });
@@ -319,7 +319,7 @@ class Music {
     }
 }
 
-class Command{
+class Command {
     static async attach(msg: Discord.Message) {
         // 如果使用者正在頻道中
         if (msg.member?.voice.channel !== null) {
@@ -351,23 +351,23 @@ class Command{
         msg.channel.send(helpText);
     }
 
-    static next(bucket: Bucket){
+    static next(bucket: Bucket) {
         bucket.queue.next(1);
         bucket.music.playQueue();
     }
 
-    static pre(bucket: Bucket){
+    static pre(bucket: Bucket) {
         bucket.queue.next(-1);
         bucket.music.playQueue();
     }
 
-    static ls(msg: Discord.Message, bucket: Bucket){
+    static ls(msg: Discord.Message, bucket: Bucket) {
         bucket.queue.show(msg);
     }
 
-    static listJson(msg: Discord.Message, bucket: Bucket){
+    static listJson(msg: Discord.Message, bucket: Bucket) {
         let url: Array<string> = []
-        bucket.queue.list.forEach((info:MusicInfo)=>{
+        bucket.queue.list.forEach((info: MusicInfo) => {
             url.push(info.url.replace('https://www.youtube.com/watch?v=', ''))
         })
         msg.channel.send('```\n' + JSON.stringify(url, null, '\t') + '\n```');
@@ -489,10 +489,10 @@ client.on('message', async (msg) => {
             .trim();
         let timepart = time.split(':');
         let secs = 0;
-        for(let i=timepart.length-1, j=0; i>=0; i--, j++){
+        for (let i = timepart.length - 1, j = 0; i >= 0; i--, j++) {
             secs += Number(timepart[i]) * (60 ** j);
         }
-        
+
         try {
             bucket.music.seek(secs);
         } catch (e) {
@@ -505,15 +505,15 @@ client.on('message', async (msg) => {
         let args = msg.content
             .replace('.json', '')
             .trim();
-        if(args === ''){
+        if (args === '') {
             Command.listJson(msg, bucket);
-        }else{
-            try{
+        } else {
+            try {
                 let list: Array<string> = JSON.parse(args)
                 list.forEach(url => {
                     bucket.music.play(url);
                 });
-            }catch(e){
+            } catch (e) {
                 Util.sendErr(msg, e)
             }
         }
